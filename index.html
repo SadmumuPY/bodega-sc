@@ -1,6 +1,15 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bodega SC</title>
+<title>Bodega SC — Bebidas y delivery</title>
+<meta name="description" content="Bodega SC: venta y delivery de bebidas, cervezas, whisky, vinos, gaseosas y cigarrillos con envío en el día. Solo para mayores de 18 años.">
+<meta name="theme-color" content="#c4161c">
+<meta property="og:title" content="Bodega SC — Bebidas y delivery">
+<meta property="og:description" content="Venta y delivery de bebidas con envío en el día.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23c4161c'/%3E%3Ctext x='50' y='70' font-size='54' font-family='Arial,sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3ESC%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -338,6 +347,8 @@
   .foot{text-align:center;color:var(--muted);font:400 12px Archivo;margin-top:30px}
   .foot a{color:var(--red);cursor:pointer;text-decoration:underline}
 </style>
+</head>
+<body>
 
 <!-- ===== AGE GATE ===== -->
 <div id="gate">
@@ -390,7 +401,7 @@
     <button class="go" onclick="doLogin()">Ingresar</button>
     <button class="back2" onclick="showStore()">‹ Volver a la tienda</button>
     <div class="err" id="lerr"></div>
-    <div class="demo" id="demoNote">🔑 Demo (sin nube) — usuario: <b>admin</b> · contraseña: <b>bodega</b></div>
+    <div class="demo hidden" id="demoNote"></div>
   </div>
 </div>
 
@@ -478,6 +489,7 @@ function defaultCategories(){ return ["Gaseosas","Cervezas","Whisky","Vinos","Ci
 function goHome(){ activeCat="Todos"; searchQ=""; storePage=1; if($("search"))$("search").value=""; if($("searchClr"))$("searchClr").classList.remove("show"); renderCats(); renderGrid(); window.scrollTo({top:0,behavior:"smooth"}); }
 const PAYLBL={efectivo:"Efectivo",transferencia:"Transferencia",pos:"POS / Tarjeta"};
 const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const gs=n=>"Gs "+Number(n).toLocaleString("es-PY");
 function toast(m){const t=$("toast");t.textContent="✓ "+m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2000);}
 const priceOf=p=>(p.oferta&&p.oferta>0)?p.oferta:p.precio;
@@ -543,7 +555,7 @@ async function boot(){
       SETTINGS=cf.data?cfgFromRow(cf.data):defaultSettings();
       ORDERS=oc.data||[];
       try{ const {data:{session}}=await sb.auth.getSession(); adminAuthed=!!session; }catch(e){}
-      applySettings(); SB_OK=true;
+      applySettings(); SB_OK=true; flushPendingOrders();
       const dn=$("demoNote"); if(dn)dn.style.display="none";
       return;
     }catch(e){ console.error("[Bodega SC] Supabase no disponible, uso datos locales:",e); SB_ERR=(e&&e.message)||String(e); }
@@ -569,8 +581,7 @@ async function doLogin(){
     catch(e){ $("lerr").textContent="Email o contraseña incorrectos."; }
     return;
   }
-  const ul=u.toLowerCase();
-  if((ul==="admin"||ul==="vendedor")&&p==="bodega"){adminAuthed=true;$("who").textContent="Hola, "+ul;showAdmin();}else $("lerr").textContent="Usuario o contraseña incorrectos.";
+  $("lerr").textContent="No hay conexión con el servidor. Reintentá en unos minutos.";
 }
 async function logout(){ if(sb){try{await sb.auth.signOut();}catch(e){}} adminAuthed=false; showStore(); }
 function go(t){ tab=t; document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.t===t)); if(t==="inicio")renderHome();else if(t==="productos")renderProducts();else if(t==="pedidos")renderOrders();else if(t==="horarios")renderHours();else if(t==="config")renderConfig();else renderReports(); }
@@ -703,14 +714,35 @@ function validate(){
   const name=$("f_name")?.value.trim(),addr=$("f_addr")?.value.trim(),facturaOn=$("f_factura")?.checked,ruc=$("f_ruc")?.value.trim();
   btn.disabled=!(name&&addr&&pay&&(!facturaOn||ruc));
 }
+async function saveOrderCloud(order){
+  try{
+    let {error}=await sb.from('pedidos').insert(order);
+    if(error){ // las columnas subtotal/envio/total pueden no existir aún → reintento compatible
+      const {subtotal,envio,total,...legacy}=order;
+      const r=await sb.from('pedidos').insert(legacy); error=r.error;
+    }
+    if(error) throw error;
+  }catch(e){ console.error("[Bodega SC] Pedido no guardado en la nube, lo respaldo localmente:",e); backupOrderLocal(order); toast("Pedido enviado. Lo registramos al reconectar."); }
+}
+function backupOrderLocal(order){ try{ const k="bodega:pending_orders"; const arr=JSON.parse(localStorage.getItem(k)||"[]"); arr.push({...order,_backupTs:Date.now()}); localStorage.setItem(k,JSON.stringify(arr)); }catch(e){} }
+async function flushPendingOrders(){
+  if(!sb)return; const k="bodega:pending_orders"; let arr;
+  try{ arr=JSON.parse(localStorage.getItem(k)||"[]"); }catch(e){ return; }
+  if(!arr.length)return; const remain=[];
+  for(const o of arr){ const {_backupTs,...order}=o;
+    try{ let {error}=await sb.from('pedidos').insert(order); if(error){ const {subtotal,envio,total,...legacy}=order; const r=await sb.from('pedidos').insert(legacy); error=r.error; } if(error)throw error; }
+    catch(e){ remain.push(o); }
+  }
+  try{ localStorage.setItem(k,JSON.stringify(remain)); }catch(e){}
+}
 function confirmOrder(){
   if(!storeOpen)return;
   const name=$("f_name").value.trim(),addr=$("f_addr").value.trim(),notes=$("f_notes").value.trim();
   const facturaOn=$("f_factura").checked,ruc=$("f_ruc").value.trim();
   const sub=subtotal(),total=sub+DELIVERY,payLabel=PAYLBL[pay];
   const itemObjs=Object.entries(cart).map(([id,q])=>{const p=PRODUCTS.find(x=>x.id==id);return {nombre:p.nombre,pres:p.pres,precio:priceOf(p),qty:q};});
-  const order={cliente:name,direccion:addr,geo:geo||null,notas:notes||"—",factura:facturaOn,ruc:facturaOn?ruc:"",pago:pay,status:"pendiente",motivo:"",items:itemObjs};
-  if(sb){ sb.from('pedidos').insert(order).then(({error})=>{if(error)console.error(error);}); }
+  const order={ts:new Date().toISOString(),cliente:name,direccion:addr,geo:geo||null,notas:notes||"—",factura:facturaOn,ruc:facturaOn?ruc:"",pago:pay,status:"pendiente",motivo:"",subtotal:sub,envio:DELIVERY,total:total,items:itemObjs};
+  if(sb){ saveOrderCloud(order); }
   else { const newId=(ORDERS.length?Math.max(...ORDERS.map(o=>o.id)):0)+1; ORDERS.push({id:newId,ts:new Date().toISOString(),...order}); dbSet("bodega:orders",ORDERS); }
   dbSet("bodega:lastorder",{items:Object.entries(cart).map(([id,q])=>({id:Number(id),qty:q})),ts:Date.now()});
   const itemsTxt=itemObjs.map(i=>`• ${i.qty}x ${i.nombre} ${i.pres} — ${gs(i.precio*i.qty)}`).join("\n");
@@ -749,7 +781,7 @@ function renderProducts(){
       <select id="pfeatsel" onchange="renderPList()"><option value="Todas" ${pFeat==='Todas'?'selected':''}>Oferta: todos</option><option value="oferta" ${pFeat==='oferta'?'selected':''}>🔴 Solo en oferta</option><option value="normal" ${pFeat==='normal'?'selected':''}>Sin oferta</option></select>
       <select id="pphotosel" onchange="renderPList()"><option value="todas" ${pPhoto==='todas'?'selected':''}>Foto: todas</option><option value="sin" ${pPhoto==='sin'?'selected':''}>📷 Sin foto</option><option value="con" ${pPhoto==='con'?'selected':''}>Con foto</option></select></div>
     <div id="plist"></div>
-    <div class="foot">Datos guardados en este navegador · <a onclick="resetDemo()">Restablecer datos de demo</a></div>`;
+    <div class="foot">${sb?"☁️ Datos sincronizados en la nube (Supabase)":'Datos guardados en este navegador · <a onclick="resetDemo()">Restablecer datos de demo</a>'}</div>`;
   $("psearch").value=pSearch;
   if([...$("pcatsel").options].some(o=>o.value===pFilter)) $("pcatsel").value=pFilter; else pFilter="Todas";
   renderPList();
@@ -884,7 +916,9 @@ let oFrom="",oTo="",oFilter="todos",oSearch="";
 function ymd(iso){const d=new Date(iso);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function todayYmd(){return ymd(new Date().toISOString());}
 function hm(iso){const d=new Date(iso);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
-function orderTotal(o){return o.items.reduce((s,i)=>s+i.precio*i.qty,0)+DELIVERY;}
+function orderSubtotal(o){return typeof o.subtotal==="number"?o.subtotal:o.items.reduce((s,i)=>s+i.precio*i.qty,0);}
+function orderEnvio(o){return typeof o.envio==="number"?o.envio:DELIVERY;}
+function orderTotal(o){return typeof o.total==="number"?o.total:orderSubtotal(o)+orderEnvio(o);}
 function renderOrders(){
   if(!oFrom){oFrom=todayYmd();oTo=todayYmd();}
   let list=ORDERS.filter(o=>{const d=ymd(o.ts);return d>=oFrom&&d<=oTo;});
@@ -902,9 +936,9 @@ function renderOrders(){
 }
 function orderCard(o){
   const itemsCount=o.items.reduce((s,i)=>s+i.qty,0);
-  return `<div class="ord" id="ord${o.id}"><div class="ord-head" onclick="document.getElementById('ord${o.id}').classList.toggle('open')"><div class="ord-id">#${String(o.id).padStart(3,"0")}</div><div style="flex:1;min-width:0"><div class="ord-cli">${o.cliente}</div><div class="ord-sub">${hm(o.ts)} · ${itemsCount} ítem${itemsCount!==1?'s':''} · ${PAYLBL[o.pago]}</div></div><div style="text-align:right"><div class="ord-tot">${gs(orderTotal(o))}</div><span class="st st-${o.status}">${o.status}</span></div><span class="chev">▾</span></div>
-    <div class="ord-body">${o.items.map(i=>`<div class="ord-line"><span>${i.qty}× ${i.nombre} ${i.pres}</span><b>${gs(i.precio*i.qty)}</b></div>`).join("")}<div class="ord-line" style="color:var(--muted)"><span>Envío</span><span>${gs(DELIVERY)}</span></div>
-    <div class="ord-info">📍 <b>${o.direccion}</b>${o.geo?` · <a href="https://maps.google.com/?q=${o.geo.lat},${o.geo.lng}" target="_blank" style="color:var(--red);font-weight:700">📍 Ver ubicación</a>`:""}<br>${o.notas&&o.notas!=="—"?`📝 ${o.notas}<br>`:""}${o.factura?`🧾 Factura · RUC ${o.ruc}<br>`:""}💳 ${PAYLBL[o.pago]}${(()=>{const n=ORDERS.filter(x=>x.cliente.toLowerCase()===o.cliente.toLowerCase()).length;return n>1?`<br>👤 ${n} pedidos de este cliente`:"";})()}${o.status==="cancelado"&&o.motivo?`<br>❌ <b>Motivo:</b> ${o.motivo}`:""}</div>
+  return `<div class="ord" id="ord${o.id}"><div class="ord-head" onclick="document.getElementById('ord${o.id}').classList.toggle('open')"><div class="ord-id">#${String(o.id).padStart(3,"0")}</div><div style="flex:1;min-width:0"><div class="ord-cli">${esc(o.cliente)}</div><div class="ord-sub">${hm(o.ts)} · ${itemsCount} ítem${itemsCount!==1?'s':''} · ${PAYLBL[o.pago]}</div></div><div style="text-align:right"><div class="ord-tot">${gs(orderTotal(o))}</div><span class="st st-${o.status}">${o.status}</span></div><span class="chev">▾</span></div>
+    <div class="ord-body">${o.items.map(i=>`<div class="ord-line"><span>${i.qty}× ${i.nombre} ${i.pres}</span><b>${gs(i.precio*i.qty)}</b></div>`).join("")}<div class="ord-line" style="color:var(--muted)"><span>Envío</span><span>${gs(orderEnvio(o))}</span></div>
+    <div class="ord-info">📍 <b>${esc(o.direccion)}</b>${o.geo?` · <a href="https://maps.google.com/?q=${o.geo.lat},${o.geo.lng}" target="_blank" style="color:var(--red);font-weight:700">📍 Ver ubicación</a>`:""}<br>${o.notas&&o.notas!=="—"?`📝 ${esc(o.notas)}<br>`:""}${o.factura?`🧾 Factura · RUC ${esc(o.ruc)}<br>`:""}💳 ${PAYLBL[o.pago]}${(()=>{const n=ORDERS.filter(x=>x.cliente.toLowerCase()===o.cliente.toLowerCase()).length;return n>1?`<br>👤 ${n} pedidos de este cliente`:"";})()}${o.status==="cancelado"&&o.motivo?`<br>❌ <b>Motivo:</b> ${esc(o.motivo)}`:""}</div>
     <div class="ord-acts">${orderActions(o)}</div></div></div>`;
 }
 function orderActions(o){
@@ -1007,7 +1041,7 @@ function renderHome(){
       <div class="stat"><div class="k">Ticket promedio</div><div class="v">${gs(tkt)}</div></div>
     </div>
     <div class="panel" style="padding:16px;margin-bottom:14px"><div style="font:700 15px Oswald;text-transform:uppercase;margin-bottom:10px">Pedidos pendientes de hoy</div>
-      ${pendList.length?pendList.map(o=>`<div class="ord-line" style="cursor:pointer" onclick="go('pedidos')"><span>#${String(o.id).padStart(3,"0")} · ${o.cliente} · ${hm(o.ts)}</span><b>${gs(orderTotal(o))}</b></div>`).join(""):`<div style="color:var(--muted);font:400 13px Archivo">No hay pedidos pendientes 🎉</div>`}</div>
+      ${pendList.length?pendList.map(o=>`<div class="ord-line" style="cursor:pointer" onclick="go('pedidos')"><span>#${String(o.id).padStart(3,"0")} · ${esc(o.cliente)} · ${hm(o.ts)}</span><b>${gs(orderTotal(o))}</b></div>`).join(""):`<div style="color:var(--muted);font:400 13px Archivo">No hay pedidos pendientes 🎉</div>`}</div>
     <div class="panel" style="padding:16px"><div style="font:700 15px Oswald;text-transform:uppercase;margin-bottom:10px">Más pedidos hoy</div>
       ${top.length?top.map(([k,v])=>`<div class="ord-line"><span>${k}</span><b>${v} u.</b></div>`).join(""):`<div style="color:var(--muted);font:400 13px Archivo">Sin ventas hoy todavía.</div>`}</div>`;
   updatePendingBadge();
@@ -1027,7 +1061,7 @@ function exportOrders(){
   list.sort((a,b)=>b.id-a.id);
   if(!list.length){toast("No hay pedidos para exportar");return;}
   const headers=["N°","Fecha","Hora","Cliente","Dirección","Productos","Subtotal","Envío","Total","Pago","Estado","Motivo","Factura","RUC","Ubicación"];
-  const rows=list.map(o=>{const sub=o.items.reduce((s,i)=>s+i.precio*i.qty,0);const items=o.items.map(i=>`${i.qty}x ${i.nombre} ${i.pres}`).join(" | ");return [String(o.id).padStart(3,"0"),ymd(o.ts),hm(o.ts),o.cliente,o.direccion,items,sub,DELIVERY,sub+DELIVERY,PAYLBL[o.pago],o.status,o.motivo||"",o.factura?"Sí":"No",o.ruc||"",o.geo?`https://maps.google.com/?q=${o.geo.lat},${o.geo.lng}`:""];});
+  const rows=list.map(o=>{const sub=orderSubtotal(o);const items=o.items.map(i=>`${i.qty}x ${i.nombre} ${i.pres}`).join(" | ");return [String(o.id).padStart(3,"0"),ymd(o.ts),hm(o.ts),o.cliente,o.direccion,items,sub,orderEnvio(o),orderTotal(o),PAYLBL[o.pago],o.status,o.motivo||"",o.factura?"Sí":"No",o.ruc||"",o.geo?`https://maps.google.com/?q=${o.geo.lat},${o.geo.lng}`:""];});
   downloadCSV(`pedidos_${oFrom}_a_${oTo}.csv`,headers,rows); toast("CSV exportado");
 }
 function exportReports(){
@@ -1066,3 +1100,5 @@ boot().then(()=>{ renderCats(); renderGrid(); renderStatus(); renderFooter(); in
 setInterval(renderStatus,60000);
 setInterval(pollOrders,20000);
 </script>
+</body>
+</html>
