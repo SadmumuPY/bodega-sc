@@ -283,6 +283,10 @@
   .row-act{display:flex;gap:6px}
   .ic-btn{border:1.5px solid var(--line);background:#fff;border-radius:8px;width:34px;height:34px;font-size:15px;display:flex;align-items:center;justify-content:center}
   .ic-btn.del:active{background:#fdecec;border-color:#f3b6b6}
+  .ic-btn:disabled{opacity:.3;cursor:default}
+  .catrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .catrow .ord{display:flex;flex-direction:column;gap:3px}
+  .catrow .ord .ic-btn{width:28px;height:21px;font-size:11px;border-radius:6px}
   .pcards{display:none}
   @media(max-width:720px){
     .ptable{display:none}
@@ -988,7 +992,8 @@ async function saveHours(){ if(sb){ try{ const rows=[0,1,2,3,4,5,6].map(d=>({day
 function renderConfig(){
   const s=SETTINGS;
   $("view").innerHTML=`<div class="page-head"><h2>Configuración</h2></div>
-    <div class="panel" style="padding:18px;max-width:580px">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+    <div class="panel" style="padding:18px;flex:1 1 360px;min-width:300px">
       <div style="font:700 15px Oswald;text-transform:uppercase;margin-bottom:12px">Envío y pedidos</div>
       <div class="grid2"><div class="fld"><label>Precio de envío (Gs)</label><input id="cfgDelivery" type="number" value="${s.delivery}"></div><div class="fld"><label>Pedido mínimo (Gs · 0 = sin mínimo)</label><input id="cfgMin" type="number" value="${s.minOrder||0}"></div></div>
       <div class="fld"><label>Número de WhatsApp (sin + ni espacios)</label><input id="cfgWa" value="${s.whatsapp}" placeholder="595992168257"></div>
@@ -999,15 +1004,18 @@ function renderConfig(){
       <div class="fld"><label>N° de alias</label><input id="cfgAliasNro" value="${s.bank.aliasNro.replace(/"/g,'&quot;')}"></div>
       <div style="margin-top:14px"><button class="btn btn-red" onclick="saveConfig()">Guardar configuración</button></div>
     </div>
-    <div class="panel" style="padding:18px;max-width:580px;margin-top:14px">
+    <div class="panel" style="padding:18px;flex:1 1 300px;min-width:280px">
       <div style="font:700 15px Oswald;text-transform:uppercase;margin-bottom:4px">Secciones / Categorías</div>
-      <div style="font:400 12px Archivo;color:var(--muted);margin-bottom:12px">Son las secciones que ve el cliente en el menú de la tienda.</div>
-      <div id="catlist">${CATEGORIES.map((c,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="flex:1;font:500 14px Archivo">${c}</span><button class="ic-btn del" onclick="delCategory(${i})">🗑</button></div>`).join("")}</div>
+      <div style="font:400 12px Archivo;color:var(--muted);margin-bottom:12px">Ordenalas con ▲▼: la primera aparece primero en el menú de la tienda. Priorizá las que más venden.</div>
+      <div id="catlist">${CATEGORIES.map((c,i)=>`<div class="catrow"><span class="ord"><button class="ic-btn" onclick="moveCat(${i},-1)" ${i===0?'disabled':''} title="Subir">▲</button><button class="ic-btn" onclick="moveCat(${i},1)" ${i===CATEGORIES.length-1?'disabled':''} title="Bajar">▼</button></span><span style="flex:1;font:500 14px Archivo">${esc(c)}</span><button class="ic-btn del" onclick="delCategory(${i})">🗑</button></div>`).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:12px"><input id="newcat" placeholder="Nueva sección (ej: Energizantes)" style="flex:1;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font:14px Archivo" onkeydown="if(event.key==='Enter')addCategory()"><button class="btn btn-dark" onclick="addCategory()">Agregar</button></div>
+    </div>
     </div>
     <div style="font:400 12.5px/1.5 Archivo;color:var(--muted);margin-top:12px">ℹ️ Se aplica al instante en la tienda: envío, WhatsApp, dirección del footer y datos bancarios que ve el cliente.</div>`;
 }
 function addCategory(){ const v=$("newcat").value.trim(); if(!v)return; if(CATEGORIES.some(c=>c.toLowerCase()===v.toLowerCase())){toast("Esa sección ya existe");return;} CATEGORIES.push(v); if(sb)sb.from('categorias').insert({nombre:v,orden:CATEGORIES.length}).then(({error})=>{if(error)console.error(error);}); else dbSet("bodega:categories",CATEGORIES); renderConfig(); renderCats(); toast("Sección agregada"); }
+function moveCat(i,dir){ const j=i+dir; if(j<0||j>=CATEGORIES.length)return; const t=CATEGORIES[i]; CATEGORIES[i]=CATEGORIES[j]; CATEGORIES[j]=t; persistCatOrder(); renderConfig(); renderCats(); renderGrid(); }
+async function persistCatOrder(){ if(sb){ try{ await Promise.all(CATEGORIES.map((c,i)=>sb.from('categorias').update({orden:i+1}).eq('nombre',c))); }catch(e){ console.error("[Bodega SC] No se pudo guardar el orden de secciones:",e); } } else dbSet("bodega:categories",CATEGORIES); }
 function delCategory(i){ const c=CATEGORIES[i]; const n=PRODUCTS.filter(p=>p.cat===c).length; confirmModal(`¿Quitar la sección "${c}"?`+(n?` Tiene ${n} producto(s); seguirán existiendo pero la sección desaparece del menú.`:""),()=>{CATEGORIES.splice(i,1);if(sb)sb.from('categorias').delete().eq('nombre',c).then(({error})=>{if(error)console.error(error);});else dbSet("bodega:categories",CATEGORIES);renderConfig();renderCats();renderGrid();toast("Sección quitada");},{danger:true,yesLabel:"Quitar"}); }
 
 function saveConfig(){
