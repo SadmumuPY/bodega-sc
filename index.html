@@ -10,6 +10,12 @@
 <meta property="og:description" content="Venta y delivery de bebidas con envío en el día.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23c4161c'/%3E%3Ctext x='50' y='70' font-size='54' font-family='Arial,sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3ESC%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Bodega SC">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1107,6 +1113,11 @@ $("confirmNo").onclick=()=>$("confirmOv").classList.remove("show");
 boot().then(()=>{ renderCats(); renderGrid(); renderStatus(); renderFooter(); initRepeat(); });
 setInterval(renderStatus,60000);
 setInterval(pollOrders,20000);
+</script>
+<script>
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW no registrado:',e)); });
+}
 </script>
 </body>
 </html>
