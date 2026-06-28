@@ -1,0 +1,10 @@
+# Configuración de despliegue — Bodega SC (sitio estático)
+[build]
+  publish = "."
+  command = ""
+
+# El service worker no debe cachearse, para que las actualizaciones se apliquen al instante.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
