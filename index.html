@@ -18,7 +18,7 @@
 <meta name="apple-mobile-web-app-title" content="Bodega SC">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
@@ -631,7 +631,6 @@ async function initRepeat(){
 function repeatOrder(){ if(!_lastOrder)return; cart={}; _lastOrder.items.forEach(it=>{const p=PRODUCTS.find(x=>x.id===it.id&&x.activo);if(p)cart[it.id]=it.qty;}); sync(); dismissRepeat(); openCart(); toast("Pedido anterior cargado"); }
 function dismissRepeat(){ $("repeatBanner").classList.add("hidden"); }
 
-const LABELS={Todos:"Todos los productos"};
 function categories(){ return ["Todos",...CATEGORIES]; }
 function renderCats(){ $("cats").innerHTML=categories().map(c=>`<button class="${c===activeCat?'active':''}" onclick="setCat('${c}')">${c}</button>`).join("")+`<button onclick="document.getElementById('sfoot').scrollIntoView({behavior:'smooth'})">Contacto</button>`; }
 function setCat(c){ activeCat=c; storePage=1; renderCats(); renderGrid(); }
@@ -660,7 +659,7 @@ function renderGrid(){
     const control = expanded
       ? `<div class="qtybox"><button onclick="dec(${p.id})">−</button><span>${qn}</span><button onclick="inc(${p.id})">+</button></div>`
       : `<button class="addbtn" onclick="inc(${p.id})">Agregar</button>`;
-    return `<div class="pcard2"><div class="pimg">${off?'<span class="ofbadge">OFERTA</span>':''}${p.foto?`<img src="${p.foto}">`:`<span class="glyph">${p.cat[0]}</span>`}</div>
+    return `<div class="pcard2"><div class="pimg">${off?'<span class="ofbadge">OFERTA</span>':''}${p.foto?`<img src="${p.foto}" loading="lazy" decoding="async" alt="${esc(p.nombre)}">`:`<span class="glyph">${p.cat[0]}</span>`}</div>
       <div class="pbody"><div class="pbrand">${brand}</div><div class="pname">${p.nombre}</div>${p.pres&&p.pres!=='-'?`<div class="ppres">${p.pres}</div>`:''}<div class="prow">${priceRow}</div></div>
       <div class="pfoot">${control}</div></div>`;
   }).join("");
@@ -780,7 +779,7 @@ function renderFooter(){
 
 /* ===== ADMIN: PRODUCTOS ===== */
 let pSearch="",pFilter="Todas",pFeat="Todas",pPhoto="todas";
-function thumb(p){ return p.foto?`<div class="thumb"><img src="${p.foto}"></div>`:`<div class="thumb">${p.cat[0]}</div>`; }
+function thumb(p){ return p.foto?`<div class="thumb"><img src="${p.foto}" loading="lazy" decoding="async" alt=""></div>`:`<div class="thumb">${p.cat[0]}</div>`; }
 function renderProducts(){
   const cats=["Todas",...new Set(PRODUCTS.map(p=>p.cat))];
   $("view").innerHTML=`
