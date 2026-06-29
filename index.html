@@ -125,7 +125,7 @@
   .pcard2 .pbody{padding:14px;display:flex;flex-direction:column;gap:5px;flex:1}
   .pcard2 .pbrand{font:600 10px Oswald;letter-spacing:.14em;color:var(--muted-2);text-transform:uppercase}
   .pcard2 .pname{font:500 14px/1.3 Archivo;color:var(--ink-2)}
-  .pcard2 .ppres{font:400 12.5px Archivo;color:#7d776e;margin-top:3px}
+  .pcard2 .ppres{font:500 14px Archivo;color:var(--ink);margin-top:3px}
   .pcard2 .prow{display:flex;align-items:baseline;gap:8px;margin-top:auto;padding-top:8px;flex-wrap:wrap}
   .pcard2 .pold{font:400 12px Archivo;color:var(--muted-2);text-decoration:line-through}
   .pcard2 .pprice{font:700 19px Oswald;color:var(--red)}
@@ -406,8 +406,8 @@
   <div class="login-card">
     <div class="lc"><img class="brandlogo" alt="SC"></div>
     <h1>Bodega SC</h1><div class="sub">Panel de administración</div>
-    <div class="lf"><label>Usuario / Email</label><input id="lu" autocomplete="off" placeholder="tu@email.com"></div>
-    <div class="lf"><label>Contraseña</label><input id="lp" type="password" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="lf"><label>Usuario / Email</label><input id="lu" name="bsc-usuario" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" readonly onfocus="this.removeAttribute('readonly')" placeholder="tu@email.com"></div>
+    <div class="lf"><label>Contraseña</label><input id="lp" name="bsc-clave" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="go" onclick="doLogin()">Ingresar</button>
     <button class="back2" onclick="showStore()">‹ Volver a la tienda</button>
     <div class="err" id="lerr"></div>
@@ -580,9 +580,10 @@ async function boot(){
 }
 
 function openAdmin(){ adminAuthed?showAdmin():showAdminLogin(); }
-function showStore(){ $("adminLogin").classList.add("hidden");$("adminApp").classList.add("hidden");$("store").classList.remove("hidden");renderCats();renderGrid();renderStatus();renderFooter(); }
+function showStore(){ try{localStorage.removeItem("bodega:inAdmin");}catch(e){} $("adminLogin").classList.add("hidden");$("adminApp").classList.add("hidden");$("store").classList.remove("hidden");renderCats();renderGrid();renderStatus();renderFooter(); }
 function showAdminLogin(){ $("store").classList.add("hidden");$("adminApp").classList.add("hidden");$("adminLogin").classList.remove("hidden");$("lerr").textContent="";$("lu").value="";$("lp").value=""; }
-function showAdmin(){ $("store").classList.add("hidden");$("adminLogin").classList.add("hidden");$("adminApp").classList.remove("hidden");_lastPending=pendingCount();updatePendingBadge();go("inicio"); }
+function showAdmin(){ try{localStorage.setItem("bodega:inAdmin","1");}catch(e){} $("store").classList.add("hidden");$("adminLogin").classList.add("hidden");$("adminApp").classList.remove("hidden");_lastPending=pendingCount();updatePendingBadge();go("inicio"); }
+function restoreAdminView(){ try{ if(adminAuthed && localStorage.getItem("bodega:inAdmin")==="1"){ const t=localStorage.getItem("bodega:adminTab"); showAdmin(); if(t) go(t); } }catch(e){} }
 async function doLogin(){
   const u=$("lu").value.trim(),p=$("lp").value;
   if(sb){
@@ -594,7 +595,7 @@ async function doLogin(){
   $("lerr").textContent="No hay conexión con el servidor. Reintentá en unos minutos.";
 }
 async function logout(){ if(sb){try{await sb.auth.signOut();}catch(e){}} adminAuthed=false; showStore(); }
-function go(t){ tab=t; document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.t===t)); if(t==="inicio")renderHome();else if(t==="productos")renderProducts();else if(t==="pedidos")renderOrders();else if(t==="horarios")renderHours();else if(t==="config")renderConfig();else renderReports(); }
+function go(t){ tab=t; try{localStorage.setItem("bodega:adminTab",t);}catch(e){} document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.t===t)); if(t==="inicio")renderHome();else if(t==="productos")renderProducts();else if(t==="pedidos")renderOrders();else if(t==="horarios")renderHours();else if(t==="config")renderConfig();else renderReports(); }
 
 function passAge(){ $("gate").style.display="none"; }
 function denyAge(){ $("askbox").style.display="none"; $("denied").classList.add("show"); }
@@ -1109,7 +1110,7 @@ function onConfirmYes(){ if(_mode==="prompt"){const v=$("promptInput").value.tri
 document.querySelectorAll(".brandlogo").forEach(i=>i.src=LOGO);
 $("confirmYes").onclick=onConfirmYes;
 $("confirmNo").onclick=()=>$("confirmOv").classList.remove("show");
-boot().then(()=>{ renderCats(); renderGrid(); renderStatus(); renderFooter(); initRepeat(); });
+boot().then(()=>{ renderCats(); renderGrid(); renderStatus(); renderFooter(); initRepeat(); restoreAdminView(); });
 setInterval(renderStatus,60000);
 setInterval(pollOrders,20000);
 </script>
